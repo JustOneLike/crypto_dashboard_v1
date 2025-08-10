@@ -4,6 +4,7 @@ import cors from 'cors';
 import axios from 'axios';
 import { computeScoresPoint, computeScoresSeries } from './utils/scores.js';
 import { buildIndicatorsSeries } from './utils/ta.js';
+import { sharpe30, sortino30, correlation30, adx14FromApproxCloses } from './utils/factors.js';
 
 const app = express();
 const DEFAULT_PORT = process.env.PORT || 4000;
@@ -83,7 +84,7 @@ app.get('/api/history', async (req, res) => {
   }
 });
 
-// Série d'indicateurs LTPI/MTPI/CMVI (déjà en place)
+// Série d'indicateurs LTPI/MTPI/CMVI
 app.get('/api/scores/series', async (req, res) => {
   const id = (req.query.id || 'bitcoin').trim();
   const vs = (req.query.vs || 'usd').trim();
@@ -112,33 +113,30 @@ app.get('/api/scores/series', async (req, res) => {
   }
 });
 
-// ➕ Nouvelle route : Indicateurs PRO (EMA/MACD/RSI/BB/ATR/SuperTrend/OBV)
+// ➕ Indicateurs PRO (EMA/MACD/RSI/BB/ATR/SuperTrend/OBV)
 app.get('/api/indicators', async (req, res) => {
   const id = (req.query.id || 'bitcoin').trim();
   const vs = (req.query.vs || 'usd').trim();
   const days = (req.query.days || '90').toString();
   try {
     console.log(`[indicators] id=${id} vs=${vs} days=${days}`);
-    // market_chart ohlc: CoinGecko donne prices, market_caps, total_volumes. Pas de highs/lows précis ici.
     const r = await axios.get(`https://api.coingecko.com/api/v3/coins/${id}/market_chart`, {
       params: { vs_currency: vs, days }
     });
-    const prices = r.data?.prices || [];           // [[ts, close], ...]
-    const volumes = r.data?.total_volumes || [];   // [[ts, volume], ...]
+    const prices = r.data?.prices || [];
+    const volumes = r.data?.total_volumes || [];
 
     if (!prices.length) {
       return res.status(200).json({ id, vs, days, series: [], note: 'no prices from provider' });
     }
 
     const closes = prices.map((x) => x[1]);
-    // Nous n'avons pas high/low exacts avec cette endpoint → on les approx avec une petite bande autour du close
-    const highs = closes.map(c => c * 1.003);
-    const lows  = closes.map(c => c * 0.997);
-    const vols  = volumes.map(v => v[1] ?? 0);
+    const highs  = closes.map(c => c * 1.003);
+    const lows   = closes.map(c => c * 0.997);
+    const vols   = volumes.map(v => v[1] ?? 0);
 
     const ind = buildIndicatorsSeries({ closes, highs, lows, volumes: vols });
 
-    // Construit une série alignée sur le temps
     const series = prices.map(([t, close], i) => ({
       t,
       close,
@@ -166,6 +164,44 @@ app.get('/api/indicators', async (req, res) => {
   }
 });
 
+// ➕ KPIs PRO : Sharpe, Sortino, Corrélation vs BTC, ADX(14)
+app.get('/api/factors', async (req, res) => {
+  const id = (req.query.id || 'bitcoin').trim();
+  const vs = (req.query.vs || 'usd').trim();
+  const days = (req.query.days || '90').toString();
+  try {
+    console.log(`[factors] id=${id} vs=${vs} days=${days}`);
+    // série du coin choisi
+    const r1 = await axios.get(`https://api.coingecko.com/api/v3/coins/${id}/market_chart`, {
+      params: { vs_currency: vs, days }
+    });
+    const p1 = r1.data?.prices || [];
+    if (!p1.length) return res.status(200).json({ id, vs, days, kpis: null, note: 'no prices from provider' });
+
+    const closes = p1.map(x => x[1]);
+
+    // série BTC pour corrélation
+    const r2 = await axios.get(`https://api.coingecko.com/api/v3/coins/bitcoin/market_chart`, {
+      params: { vs_currency: vs, days }
+    });
+    const pBTC = r2.data?.prices || [];
+    const closesBTC = pBTC.map(x => x[1]);
+
+    const kpis = {
+      sharpe30: Number(sharpe30(closes).toFixed(2)),
+      sortino30: Number(sortino30(closes).toFixed(2)),
+      corrBTC30: Number(correlation30(closes, closesBTC).toFixed(2)),
+      adx14: Number(adx14FromApproxCloses(closes).toFixed(2))
+    };
+
+    res.json({ id, vs, days, kpis });
+  } catch (e) {
+    const msg = e.response?.data || e.message || 'unknown error';
+    console.error('[factors] error:', msg);
+    res.status(500).json({ error: 'factors failed', details: msg });
+  }
+});
+
 // Démarrage avec recherche automatique d'un port libre
 function startServer(port) {
   const server = app.listen(port, () => {
@@ -180,5 +216,4 @@ function startServer(port) {
     }
   });
 }
-
 startServer(Number(DEFAULT_PORT));

@@ -71,3 +71,13 @@ export async function fetchIndicators({ id = 'bitcoin', vs = 'usd', days = '90' 
     return null;
   }
 }
+
+export async function fetchFactors({ id = 'bitcoin', vs = 'usd', days = '90' } = {}) {
+  try {
+    const r = await axios.get(`${API_BASE}/api/factors`, { params: { id, vs, days } });
+    return r.data; // { id, vs, days, kpis: { sharpe30, sortino30, corrBTC30, adx14 } }
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
+}

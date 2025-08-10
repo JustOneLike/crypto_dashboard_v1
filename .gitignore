@@ -1,39 +1,46 @@
-# Node modules
+# --- Node & monorepo ---
 node_modules/
-
-# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+.pnpm-debug.log*
 
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
+# Lockfiles (garde seulement ceux que tu veux suivre)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
-# Dependency directories
-jspm_packages/
-
-# Build outputs
+# --- Builds & caches ---
 dist/
 build/
 .cache/
 .temp/
+.tmp/
+coverage/
+.nyc_output/
 
-# Local env files
+# --- Environnements ---
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
 
-# Vite cache
-frontend/node_modules/.vite/
+# --- Vite / React ---
+frontend/node_modules/
+frontend/dist/
 frontend/.vite/
+frontend/node_modules/.vite/
+frontend/.cache/
+frontend/.DS_Store
 
-# Editor directories and files
+# --- Backend ---
+backend/node_modules/
+backend/dist/
+backend/.DS_Store
+
+# --- OS / éditeurs ---
+.DS_Store
+Thumbs.db
 .idea/
 .vscode/
 *.suo
@@ -41,29 +48,10 @@ frontend/.vite/
 *.njsproj
 *.sln
 
-# Mac / Linux / Windows system files
-.DS_Store
-Thumbs.db
-
-# Optional npm cache directory
-.npm/
-
-# Coverage directory used by tools like jest
-coverage/
-
-# Temporary files
+# --- Misc temp ---
+pids
+*.pid
+*.seed
+*.pid.lock
 tmp/
 temp/
-
-# Backend specific ignores
-backend/node_modules/
-backend/dist/
-
-# Frontend specific ignores
-frontend/node_modules/
-frontend/dist/
-
-# Package locks at root if you don't want them tracked
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
