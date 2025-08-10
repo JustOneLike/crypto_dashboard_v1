@@ -45,8 +45,17 @@ export async function getWatchlist() {
 export async function fetchHistory({ id = 'bitcoin', vs = 'usd', days = '7' } = {}) {
   try {
     const r = await axios.get(`${API_BASE}/api/history`, { params: { id, vs, days } });
-    // { id, vs, days, prices: [[timestamp_ms, price], ...] }
-    return r.data;
+    return r.data; // { id, vs, days, prices:[{t,p},...] }
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
+}
+
+export async function fetchScoresSeries({ id = 'bitcoin', vs = 'usd', days = '30' } = {}) {
+  try {
+    const r = await axios.get(`${API_BASE}/api/scores/series`, { params: { id, vs, days } });
+    return r.data; // { id, vs, days, series:[{t, LTPI, MTPI, CMVI}, ...] }
   } catch (e) {
     console.error(e);
     return null;

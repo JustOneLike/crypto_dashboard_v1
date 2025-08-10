@@ -1,6 +1,8 @@
+// backend/index.js
 import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
+import { computeScoresPoint, computeScoresSeries } from './utils/scores.js';
 
 const app = express();
 const DEFAULT_PORT = process.env.PORT || 4000;
@@ -33,16 +35,14 @@ app.get('/api/market', async (req, res) => {
   }
 });
 
-// Scores (mock: à remplacer par tes vraies formules)
+// Scores (calcul réel simplifié)
 app.post('/api/scores', (req, res) => {
   const { prices } = req.body || {};
   if (!prices || !Array.isArray(prices) || prices.length < 2) {
     return res.status(400).json({ error: 'prices array (time, price) required' });
   }
-  const LTPI = Math.round(Math.random() * 100);
-  const MTPI = Math.round(Math.random() * 100);
-  const CMVI = Math.round(Math.random() * 100);
-  res.json({ LTPI, MTPI, CMVI, meta: { len: prices.length } });
+  const result = computeScoresPoint(prices);
+  res.json(result);
 });
 
 // Watchlist (in-memory)
@@ -66,14 +66,34 @@ app.get('/api/history', async (req, res) => {
     const r = await axios.get(`https://api.coingecko.com/api/v3/coins/${id}/market_chart`, {
       params: { vs_currency: vs, days }
     });
-    res.json({ id, vs, days, prices: r.data.prices });
+    // format: [[ts, price], ...] -> [{t, p}, ...]
+    const prices = (r.data.prices || []).map(([t, p]) => ({ t, p }));
+    res.json({ id, vs, days, prices });
   } catch (e) {
     console.error(e.message);
     res.status(500).json({ error: 'history fetch failed' });
   }
 });
 
-// Fonction pour trouver un port libre
+// Série de scores basée sur l'historique
+app.get('/api/scores/series', async (req, res) => {
+  const id = req.query.id || 'bitcoin';
+  const vs = req.query.vs || 'usd';
+  const days = req.query.days || '30';
+  try {
+    const r = await axios.get(`https://api.coingecko.com/api/v3/coins/${id}/market_chart`, {
+      params: { vs_currency: vs, days }
+    });
+    const history = (r.data.prices || []).map(([t, p]) => ({ t, p }));
+    const series = computeScoresSeries(history);
+    res.json({ id, vs, days, series });
+  } catch (e) {
+    console.error(e.message);
+    res.status(500).json({ error: 'scores series failed' });
+  }
+});
+
+// Port auto (4000 → 4001 → ...)
 function startServer(port) {
   const server = app.listen(port, () => {
     console.log(`✅ Backend listening on http://localhost:${port}`);
@@ -89,5 +109,4 @@ function startServer(port) {
   });
 }
 
-// Lancer le serveur sur DEFAULT_PORT ou suivant
 startServer(Number(DEFAULT_PORT));

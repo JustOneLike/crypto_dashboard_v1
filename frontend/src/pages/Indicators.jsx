@@ -1,51 +1,84 @@
-import React, { useEffect, useState } from 'react';
-import { postScores } from '../services/api';
-
-function mockPrices(n = 60, base = 100) {
-  const arr = [];
-  let v = base;
-  const now = Date.now();
-  for (let i = n - 1; i >= 0; i--) {
-    v = v * (0.995 + Math.random()*0.01);
-    arr.push({ t: now - i * 3600_000, p: v });
-  }
-  return arr;
-}
+import React, { useEffect, useMemo, useState } from 'react';
+import { fetchScoresSeries } from '../services/api';
+import {
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend
+} from 'recharts';
 
 export default function Indicators() {
-  const [scores, setScores] = useState(null);
+  const [ids, setIds] = useState('bitcoin,ethereum,solana');
+  const [selected, setSelected] = useState('bitcoin');
+  const [days, setDays] = useState('30');
+  const [series, setSeries] = useState([]);
+
+  const coins = useMemo(() => ids.split(',').map(s => s.trim()).filter(Boolean), [ids]);
 
   useEffect(() => {
     (async () => {
-      const prices = mockPrices();
-      const sc = await postScores(prices);
-      setScores(sc);
+      const data = await fetchScoresSeries({ id: selected, days });
+      setSeries(data?.series || []);
     })();
-  }, []);
+  }, [selected, days]);
+
+  const last = series.length ? series[series.length - 1] : null;
 
   return (
     <div className="page">
       <h2>Indicateurs</h2>
-      <p className="muted">Scores calculés côté serveur (modèle simplifié à remplacer par tes formules exactes).</p>
+      <p className="muted">Scores LTPI / MTPI / CMVI calculés côté serveur, basés sur l’historique.</p>
+
+      <div className="toolbar" style={{ flexWrap: 'wrap', gap: 8 }}>
+        <input value={ids} onChange={(e)=>setIds(e.target.value)} />
+        <span className="hint">ex: bitcoin,ethereum,solana</span>
+
+        <select value={selected} onChange={(e)=>setSelected(e.target.value)}>
+          {coins.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+
+        <select value={days} onChange={(e)=>setDays(e.target.value)}>
+          <option value="7">7j</option>
+          <option value="30">30j</option>
+          <option value="90">90j</option>
+          <option value="365">1 an</option>
+          <option value="max">Max</option>
+        </select>
+      </div>
 
       <div className="grid3">
         <div className="card kpi">
           <span className="kpi-label">LTPI</span>
-          <span className="kpi-value">{scores?.LTPI ?? '...'}</span>
+          <span className="kpi-value">{last ? last.LTPI : '...'}</span>
         </div>
         <div className="card kpi">
           <span className="kpi-label">MTPI</span>
-          <span className="kpi-value">{scores?.MTPI ?? '...'}</span>
+          <span className="kpi-value">{last ? last.MTPI : '...'}</span>
         </div>
         <div className="card kpi">
           <span className="kpi-label">CMVI</span>
-          <span className="kpi-value">{scores?.CMVI ?? '...'}</span>
+          <span className="kpi-value">{last ? last.CMVI : '...'}</span>
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: 16 }}>
-        <h3>Détails bruts</h3>
-        <pre>{scores ? JSON.stringify(scores, null, 2) : 'Calcul...'}</pre>
+      <div className="card" style={{ marginTop: 16, minHeight: 320 }}>
+        <h3 style={{ marginBottom: 8 }}>{selected} — {days} jours</h3>
+        <div style={{ width: '100%', height: 260 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={series}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis
+                dataKey="t"
+                tickFormatter={(ts) => new Date(ts).toLocaleDateString()}
+              />
+              <YAxis domain={[0, 100]} />
+              <Tooltip
+                labelFormatter={(ts) => new Date(ts).toLocaleString()}
+              />
+              <Legend />
+              <Line type="monotone" dataKey="LTPI" dot={false} />
+              <Line type="monotone" dataKey="MTPI" dot={false} />
+              <Line type="monotone" dataKey="CMVI" dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       </div>
     </div>
   );

@@ -1,62 +1,89 @@
-// Simplified scoring functions inspired by LTPI/MTPI/CMVI concepts.
-// Input: prices = [{t: timestamp, p: price}, ...] sorted ascending by time
-function sma(prices, period) {
-  const res = [];
-  for (let i = 0; i < prices.length; i++) {
-    const start = Math.max(0, i - period + 1);
-    const slice = prices.slice(start, i + 1).map(x => x.p);
-    const sum = slice.reduce((a,b)=>a+b,0);
-    res.push(sum / slice.length);
+// backend/utils/scores.js (ESM)
+
+function sma(values, period) {
+  const out = Array(values.length).fill(null);
+  let sum = 0;
+  for (let i = 0; i < values.length; i++) {
+    sum += values[i];
+    if (i >= period) sum -= values[i - period];
+    if (i >= period - 1) out[i] = sum / period;
   }
-  return res;
+  return out;
 }
 
-function stddev(values) {
-  const mean = values.reduce((a,b)=>a+b,0) / values.length;
-  const variance = values.reduce((a,b)=>a + Math.pow(b-mean,2), 0) / values.length;
-  return Math.sqrt(variance);
+function stddev(arr) {
+  if (arr.length === 0) return 0;
+  const m = arr.reduce((a, b) => a + b, 0) / arr.length;
+  const v = arr.reduce((a, b) => a + (b - m) ** 2, 0) / arr.length;
+  return Math.sqrt(v);
 }
 
-function computeVolatility(prices) {
-  const returns = [];
+function annualizedVolFromPrices(prices) {
+  const rets = [];
   for (let i = 1; i < prices.length; i++) {
-    returns.push(Math.log(prices[i].p / prices[i-1].p));
+    const p0 = prices[i - 1];
+    const p1 = prices[i];
+    if (p0 > 0 && p1 > 0) rets.push(Math.log(p1 / p0));
   }
-  if (returns.length === 0) return 0;
-  return stddev(returns) * Math.sqrt(252); // annualized approx
+  if (rets.length === 0) return 0;
+  return stddev(rets) * Math.sqrt(252); // annualisé (approx)
 }
 
-function computeScores(prices) {
-  // Basic idea:
-  // LTPI ~ longer SMA slope (trend long term)
-  // MTPI ~ shorter SMA slope (trend medium term)
-  // CMVI ~ normalized volatility score
-  const shortPeriod = Math.max(3, Math.floor(prices.length * 0.05)); // ~5% window
-  const midPeriod = Math.max(7, Math.floor(prices.length * 0.2)); // ~20% window
-  const longPeriod = Math.max(21, Math.floor(prices.length * 0.5)); // ~50% window
-
-  const smaShort = sma(prices, shortPeriod);
-  const smaMid = sma(prices, midPeriod);
-  const smaLong = sma(prices, longPeriod);
-
-  const lastPrice = prices[prices.length - 1].p;
-  const lastSShort = smaShort[smaShort.length -1];
-  const lastSMid = smaMid[smaMid.length -1];
-  const lastSLong = smaLong[smaLong.length -1];
-
-  // simple slopes
-  const slopeShort = (lastPrice - lastSShort) / lastSShort;
-  const slopeMid = (lastPrice - lastSMid) / lastSMid;
-  const slopeLong = (lastPrice - lastSLong) / lastSLong;
-
-  // normalize to 0..100 scale for UX
-  const normalize = (x) => Math.max(0, Math.min(100, Math.round((x + 0.5) * 100)));
-
-  const LTPI = normalize(slopeLong); // long-term tendency
-  const MTPI = normalize(slopeMid);  // medium-term tendency
-  const CMVI = Math.max(0, Math.min(100, Math.round(computeVolatility(prices) * 100))); // volatility proxy
-
-  return { LTPI, MTPI, CMVI, meta: { lastPrice, slopeShort, slopeMid, slopeLong } };
+function clamp01(x) {
+  return Math.max(0, Math.min(1, x));
 }
 
-module.exports = { computeScores };
+function normalize01(x, center = 0, spread = 0.5) {
+  // mappe un écart autour de "center" à 0..1 (spread ~ échelle)
+  return clamp01((x - center) / (2 * spread) + 0.5);
+}
+
+// Calcule LTPI/MTPI/CMVI à partir d'une série de {t, p}
+export function computeScoresPoint(priceSeries, opts = {}) {
+  const prices = priceSeries.map(d => d.p);
+  const n = prices.length;
+  if (n < 10) {
+    return { LTPI: 50, MTPI: 50, CMVI: 0, meta: { note: 'not enough data' } };
+  }
+
+  // Fenêtres simples (tu pourras affiner plus tard)
+  const short = Math.max(5, Math.floor(n * 0.06));   // ~6%
+  const mid   = Math.max(12, Math.floor(n * 0.18));  // ~18%
+  const long  = Math.max(24, Math.floor(n * 0.5));   // ~50%
+
+  const maS = sma(prices, short);
+  const maM = sma(prices, mid);
+  const maL = sma(prices, long);
+
+  const last = n - 1;
+  const p = prices[last];
+  const sS = maS[last] ?? p;
+  const sM = maM[last] ?? p;
+  const sL = maL[last] ?? p;
+
+  // Mesure de tendance = écart relatif au MA
+  const slopeShort = (p - sS) / (sS || p);
+  const slopeMid   = (p - sM) / (sM || p);
+  const slopeLong  = (p - sL) / (sL || p);
+
+  const LTPI = Math.round(normalize01(slopeLong, 0, 0.1) * 100);
+  const MTPI = Math.round(normalize01(slopeMid,  0, 0.08) * 100);
+
+  // Volatilité annualisée → bornée 0..100 via un facteur
+  const vol = annualizedVolFromPrices(prices.slice(-Math.max(20, short)));
+  const CMVI = Math.round(clamp01(vol / 1.0) * 100); // ajuste 1.0 pour calibrer
+
+  return { LTPI, MTPI, CMVI, meta: { slopeShort, slopeMid, slopeLong } };
+}
+
+// Série de scores (pour graphe) — calcule à partir de l'historique
+export function computeScoresSeries(history) {
+  // history: [{t, p}, ...] ordonné par t croissant
+  const out = [];
+  for (let i = 10; i < history.length; i++) {
+    const slice = history.slice(0, i + 1);
+    const s = computeScoresPoint(slice);
+    out.push({ t: history[i].t, LTPI: s.LTPI, MTPI: s.MTPI, CMVI: s.CMVI });
+  }
+  return out;
+}
