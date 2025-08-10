@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import { computeScoresPoint, computeScoresSeries } from './utils/scores.js';
+import { buildIndicatorsSeries } from './utils/ta.js';
 
 const app = express();
 const DEFAULT_PORT = process.env.PORT || 4000;
@@ -35,7 +36,7 @@ app.get('/api/market', async (req, res) => {
   }
 });
 
-// Scores ponctuels (calcul réel simplifié à partir d'une série {t,p})
+// Scores ponctuels (LTPI/MTPI/CMVI simplifiés)
 app.post('/api/scores', (req, res) => {
   const { prices } = req.body || {};
   if (!prices || !Array.isArray(prices) || prices.length < 2) {
@@ -50,7 +51,7 @@ app.post('/api/scores', (req, res) => {
   }
 });
 
-// Watchlist (in-memory pour démo)
+// Watchlist (in-memory)
 let watchlist = [];
 app.post('/api/watchlist', (req, res) => {
   const { items } = req.body || {};
@@ -64,11 +65,11 @@ app.get('/api/watchlist', (req, res) => {
   res.json({ watchlist });
 });
 
-// Historique de prix (CoinGecko market_chart) -> [{t,p}]
+// Historique de prix (prices -> [{t,p}])
 app.get('/api/history', async (req, res) => {
   const id = (req.query.id || 'bitcoin').trim();
   const vs = (req.query.vs || 'usd').trim();
-  const days = (req.query.days || '7').toString(); // 1,7,30,90,365,max
+  const days = (req.query.days || '7').toString();
   try {
     const r = await axios.get(`https://api.coingecko.com/api/v3/coins/${id}/market_chart`, {
       params: { vs_currency: vs, days }
@@ -82,7 +83,7 @@ app.get('/api/history', async (req, res) => {
   }
 });
 
-// Série d'indicateurs (LTPI/MTPI/CMVI) calculée depuis l'historique
+// Série d'indicateurs LTPI/MTPI/CMVI (déjà en place)
 app.get('/api/scores/series', async (req, res) => {
   const id = (req.query.id || 'bitcoin').trim();
   const vs = (req.query.vs || 'usd').trim();
@@ -111,12 +112,65 @@ app.get('/api/scores/series', async (req, res) => {
   }
 });
 
-// Démarrage avec recherche automatique d'un port libre (4000 -> 4001 -> ...)
+// ➕ Nouvelle route : Indicateurs PRO (EMA/MACD/RSI/BB/ATR/SuperTrend/OBV)
+app.get('/api/indicators', async (req, res) => {
+  const id = (req.query.id || 'bitcoin').trim();
+  const vs = (req.query.vs || 'usd').trim();
+  const days = (req.query.days || '90').toString();
+  try {
+    console.log(`[indicators] id=${id} vs=${vs} days=${days}`);
+    // market_chart ohlc: CoinGecko donne prices, market_caps, total_volumes. Pas de highs/lows précis ici.
+    const r = await axios.get(`https://api.coingecko.com/api/v3/coins/${id}/market_chart`, {
+      params: { vs_currency: vs, days }
+    });
+    const prices = r.data?.prices || [];           // [[ts, close], ...]
+    const volumes = r.data?.total_volumes || [];   // [[ts, volume], ...]
+
+    if (!prices.length) {
+      return res.status(200).json({ id, vs, days, series: [], note: 'no prices from provider' });
+    }
+
+    const closes = prices.map((x) => x[1]);
+    // Nous n'avons pas high/low exacts avec cette endpoint → on les approx avec une petite bande autour du close
+    const highs = closes.map(c => c * 1.003);
+    const lows  = closes.map(c => c * 0.997);
+    const vols  = volumes.map(v => v[1] ?? 0);
+
+    const ind = buildIndicatorsSeries({ closes, highs, lows, volumes: vols });
+
+    // Construit une série alignée sur le temps
+    const series = prices.map(([t, close], i) => ({
+      t,
+      close,
+      ema12: ind.ema12[i],
+      ema26: ind.ema26[i],
+      ema50: ind.ema50[i],
+      ema200: ind.ema200[i],
+      macd: ind.macdLine[i],
+      macdSignal: ind.macdSignal[i],
+      macdHist: ind.macdHist[i],
+      rsi: ind.rsi[i],
+      bb_upper: ind.bbUpper[i],
+      bb_mid: ind.bbMid[i],
+      bb_lower: ind.bbLower[i],
+      atr: ind.atr[i],
+      supertrend: ind.supertrend[i],
+      obv: ind.obv[i],
+    }));
+
+    res.json({ id, vs, days, series });
+  } catch (e) {
+    const msg = e.response?.data || e.message || 'unknown error';
+    console.error('[indicators] error:', msg);
+    res.status(500).json({ error: 'indicators failed', details: msg });
+  }
+});
+
+// Démarrage avec recherche automatique d'un port libre
 function startServer(port) {
   const server = app.listen(port, () => {
     console.log(`✅ Backend listening on http://localhost:${port}`);
   });
-
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.warn(`⚠️ Port ${port} already in use, trying ${port + 1}...`);
@@ -128,4 +182,3 @@ function startServer(port) {
 }
 
 startServer(Number(DEFAULT_PORT));
-

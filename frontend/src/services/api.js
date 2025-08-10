@@ -61,3 +61,13 @@ export async function fetchScoresSeries({ id = 'bitcoin', vs = 'usd', days = '30
     return null;
   }
 }
+
+export async function fetchIndicators({ id = 'bitcoin', vs = 'usd', days = '90' } = {}) {
+  try {
+    const r = await axios.get(`${API_BASE}/api/indicators`, { params: { id, vs, days } });
+    return r.data; // { id, vs, days, series:[{t, close, ema12,..., rsi, macd,...}] }
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
+}
