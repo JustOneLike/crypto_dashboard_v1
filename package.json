@@ -1,0 +1,15 @@
+{
+  "name": "crypto-dashboard-root",
+  "private": true,
+  "scripts": {
+    "setup": "npm run setup:backend && npm run setup:frontend",
+    "setup:backend": "npm --prefix backend install && npm --prefix backend install --save-dev nodemon && npm --prefix backend install technicalindicators",
+    "setup:frontend": "npm --prefix frontend install && npm --prefix frontend install react-router-dom axios recharts technicalindicators && node -e \"const fs=require('fs');const p='./frontend/.env';if(!fs.existsSync(p)){fs.writeFileSync(p,'VITE_API_BASE=http://localhost:4000\\n');console.log('Créé frontend/.env');}\"",
+    "start:all": "npm-run-all --parallel start:backend start:frontend",
+    "start:backend": "npm --prefix backend run dev",
+    "start:frontend": "npm --prefix frontend run dev"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
+  }
+}
