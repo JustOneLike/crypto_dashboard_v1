@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { fetchScoresSeries, fetchFactors, fetchIndicators } from '../services/api';
-import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend
-} from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 
 export default function Indicators() {
   const [ids, setIds] = useState('bitcoin,ethereum,solana');
@@ -11,30 +9,23 @@ export default function Indicators() {
   const [series, setSeries] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
-
   const [kpis, setKpis] = useState(null);
   const [loadingKpi, setLoadingKpi] = useState(false);
-
-  // pour badges techniques
   const [lastRSI, setLastRSI] = useState(null);
   const [bbWidthPct, setBbWidthPct] = useState(null);
 
   const coins = useMemo(() => ids.split(',').map(s => s.trim()).filter(Boolean), [ids]);
 
-  useEffect(() => {
-    if (!coins.includes(selected) && coins.length) setSelected(coins[0]);
-  }, [ids]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!coins.includes(selected) && coins.length) setSelected(coins[0]); }, [ids]); // eslint-disable-line
 
   async function loadSeries() {
     try {
       setErr(''); setLoading(true);
       const data = await fetchScoresSeries({ id: selected, days });
       setSeries(data?.series || []);
-      if (!data || !data.series) setErr('Aucune donnée reçue (API).');
+      if (!data || !data.series) setErr('Aucune donnée reçue.');
       if (data?.series && data.series.length === 0) setErr('Série vide pour cette période/crypto.');
-    } catch {
-      setErr('Erreur de chargement des indicateurs.');
-    } finally { setLoading(false); }
+    } catch { setErr('Erreur de chargement.'); } finally { setLoading(false); }
   }
 
   async function loadKpis() {
@@ -46,7 +37,6 @@ export default function Indicators() {
   }
 
   async function loadTechForBadges() {
-    // on récupère RSI & Bollinger via /api/indicators
     const ind = await fetchIndicators({ id: selected, days: (Number(days)||30) });
     const arr = ind?.series || [];
     if (arr.length) {
@@ -55,25 +45,18 @@ export default function Indicators() {
       if (last?.bb_upper != null && last?.bb_lower != null && last?.bb_mid != null) {
         const width = last.bb_upper - last.bb_lower;
         setBbWidthPct(last.bb_mid ? (width / last.bb_mid) * 100 : null);
-      } else {
-        setBbWidthPct(null);
-      }
-    } else {
-      setLastRSI(null); setBbWidthPct(null);
-    }
+      } else setBbWidthPct(null);
+    } else { setLastRSI(null); setBbWidthPct(null); }
   }
 
   useEffect(() => { loadSeries(); loadKpis(); loadTechForBadges(); }, [selected, days]);
 
-  const last = series.length ? series[series.length - 1] : null;
-
-  // --- badges helpers ---
   const trendBadge = (() => {
     const adx = kpis?.adx14 ?? null;
     if (adx == null) return { cls: 'neutral', text: 'Trend: n/a' };
-    if (adx >= 25) return { cls: 'ok', text: `Trend strong (ADX ${adx})` };
-    if (adx >= 20) return { cls: 'warn', text: `Trend weak (ADX ${adx})` };
-    return { cls: 'neutral', text: `Trend flat (ADX ${adx})` };
+    if (adx >= 25) return { cls: 'ok', text: `Trend fort (ADX ${adx})` };
+    if (adx >= 20) return { cls: 'warn', text: `Trend faible (ADX ${adx})` };
+    return { cls: 'neutral', text: `Trend plat (ADX ${adx})` };
   })();
 
   const rsiBadge = (() => {
@@ -101,52 +84,34 @@ export default function Indicators() {
     return { cls: 'neutral', text: `Corr BTC ${t}` };
   })();
 
+  const coinsList = coins.map(c => <option key={c} value={c}>{c}</option>);
+
   return (
     <div className="page indicators-page">
       <h2>Indicateurs</h2>
-      <p className="muted">Scores LTPI / MTPI / CMVI (série) + KPIs pro et badges (ADX, Bollinger, RSI, corrélation BTC).</p>
+      <p className="muted">Scores LTPI / MTPI / CMVI + KPIs pro et badges (ADX, RSI, Bollinger, Corr BTC).</p>
 
-      <div className="toolbar" style={{ flexWrap: 'wrap', gap: 8 }}>
-        <input value={ids} onChange={(e)=>setIds(e.target.value)} />
-        <span className="hint">ex: bitcoin,ethereum,solana</span>
-
-        <select value={selected} onChange={(e)=>setSelected(e.target.value)}>
-          {coins.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-
+      <div className="toolbar">
+        <input value={ids} onChange={(e)=>setIds(e.target.value)} placeholder="bitcoin,ethereum,solana" />
+        <select value={selected} onChange={(e)=>setSelected(e.target.value)}>{coinsList}</select>
         <select value={days} onChange={(e)=>setDays(e.target.value)}>
           <option value="7">7j</option>
           <option value="30">30j</option>
           <option value="90">90j</option>
           <option value="365">1 an</option>
         </select>
-
         <button className="btn" onClick={() => { loadSeries(); loadKpis(); loadTechForBadges(); }} disabled={loading || loadingKpi}>
           {(loading || loadingKpi) ? 'Chargement…' : 'Actualiser'}
         </button>
       </div>
 
-      {/* KPIs PRO */}
       <div className="grid4">
-        <div className="card kpi">
-          <span className="kpi-label">Sharpe (30j)</span>
-          <span className="kpi-value">{kpis ? kpis.sharpe30 : '—'}</span>
-        </div>
-        <div className="card kpi">
-          <span className="kpi-label">Sortino (30j)</span>
-          <span className="kpi-value">{kpis ? kpis.sortino30 : '—'}</span>
-        </div>
-        <div className="card kpi">
-          <span className="kpi-label">Corr BTC (30j)</span>
-          <span className="kpi-value">{kpis ? kpis.corrBTC30 : '—'}</span>
-        </div>
-        <div className="card kpi">
-          <span className="kpi-label">ADX (14)</span>
-          <span className="kpi-value">{kpis ? kpis.adx14 : '—'}</span>
-        </div>
+        <div className="card kpi"><span className="kpi-label">Sharpe (30j)</span><span className="kpi-value">{kpis ? kpis.sharpe30 : '—'}</span></div>
+        <div className="card kpi"><span className="kpi-label">Sortino (30j)</span><span className="kpi-value">{kpis ? kpis.sortino30 : '—'}</span></div>
+        <div className="card kpi"><span className="kpi-label">Corr BTC (30j)</span><span className="kpi-value">{kpis ? kpis.corrBTC30 : '—'}</span></div>
+        <div className="card kpi"><span className="kpi-label">ADX (14)</span><span className="kpi-value">{kpis ? kpis.adx14 : '—'}</span></div>
       </div>
 
-      {/* Badges lecture rapide */}
       <div className="badges">
         <span className={`badge ${trendBadge.cls}`}>{trendBadge.text}</span>
         <span className={`badge ${bbBadge.cls}`}>{bbBadge.text}</span>
@@ -154,27 +119,23 @@ export default function Indicators() {
         <span className={`badge ${corrBadge.cls}`}>{corrBadge.text}</span>
       </div>
 
-      {err && <div className="card" style={{ borderColor: 'rgba(255,100,100,0.4)', marginBottom: 12 }}>
-        <strong>Info :</strong> {err}
-      </div>}
+      {err && <div className="card" style={{ borderColor: 'rgba(255,100,100,0.4)', marginBottom: 12 }}><strong>Info :</strong> {err}</div>}
 
-      <div className="grid1">
-        <div className="card" style={{ marginTop: 16, minHeight: 320 }}>
-          <h3 style={{ marginBottom: 8 }}>{selected} — {days} jours</h3>
-          <div style={{ width: '100%', height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={series}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="t" tickFormatter={(ts) => new Date(ts).toLocaleDateString()} />
-                <YAxis domain={[0, 100]} />
-                <Tooltip labelFormatter={(ts) => new Date(ts).toLocaleString()} />
-                <Legend />
-                <Line type="monotone" dataKey="LTPI" dot={false} />
-                <Line type="monotone" dataKey="MTPI" dot={false} />
-                <Line type="monotone" dataKey="CMVI" dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+      <div className="card" style={{ marginTop: 16, minHeight: 320 }}>
+        <h3 style={{ marginBottom: 8 }}>{selected} — {days} jours</h3>
+        <div style={{ width: '100%', height: 260 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={series}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="t" tickFormatter={(ts) => new Date(ts).toLocaleDateString()} />
+              <YAxis domain={[0, 100]} />
+              <Tooltip labelFormatter={(ts) => new Date(ts).toLocaleString()} />
+              <Legend />
+              <Line type="monotone" dataKey="LTPI" dot={false} />
+              <Line type="monotone" dataKey="MTPI" dot={false} />
+              <Line type="monotone" dataKey="CMVI" dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       </div>
     </div>

@@ -11,15 +11,24 @@ import './styles.css';
 export default function App() {
   return (
     <BrowserRouter>
-      <Navbar />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/charts" element={<Charts />} />
-        <Route path="/indicators" element={<Indicators />} />
-        <Route path="/watchlist" element={<Watchlist />} />
-        <Route path="/pricing" element={<Pricing />} />
-        <Route path="*" element={<Home />} />
-      </Routes>
+      <div className="app-shell">
+        <Navbar />
+        <main className="app-main">
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/charts" element={<Charts />} />
+            <Route path="/indicators" element={<Indicators />} />
+            <Route path="/watchlist" element={<Watchlist />} />
+            <Route path="/pricing" element={<Pricing />} />
+            <Route path="*" element={<Home />} />
+          </Routes>
+        </main>
+        <footer className="app-footer">
+          <div className="container">
+            <span className="muted">© {new Date().getFullYear()} Crypto Dashboard — All rights reserved.</span>
+          </div>
+        </footer>
+      </div>
     </BrowserRouter>
   );
 }
